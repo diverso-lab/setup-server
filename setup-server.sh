@@ -153,6 +153,44 @@ install_shellinabox() {
     echo -e "${GREEN}Shell In A Box running at https://<IP>:4200${NC}"
 }
 
+configure_static_ip() {
+    print_title "Configuring Static IP"
+
+    read -p "Interface name (default: enp1s0): " interface
+    interface=${interface:-enp1s0}
+
+    read -p "Static IP address (e.g. 192.168.100.21/24): " static_ip
+
+    read -p "Gateway (default: 192.168.100.1): " gateway
+    gateway=${gateway:-192.168.100.1}
+
+    read -p "DNS 1 (default: 8.8.8.8): " dns1
+    dns1=${dns1:-8.8.8.8}
+
+    read -p "DNS 2 (default: 8.8.4.4): " dns2
+    dns2=${dns2:-8.8.4.4}
+
+    sudo tee /etc/netplan/00-installer-config.yaml > /dev/null <<EOF
+# This is the network config written by the script
+network:
+  version: 2
+  ethernets:
+    $interface:
+      dhcp4: no
+      addresses:
+        - $static_ip
+      gateway4: $gateway
+      nameservers:
+        addresses: [$dns1, $dns2]
+EOF
+
+    sudo netplan apply
+
+    echo -e "${GREEN}Static IP configured. New config:${NC}"
+    cat /etc/netplan/00-installer-config.yaml
+}
+
+
 ### INSTALL ALL
 install_all() {
     install_shellinabox
@@ -174,6 +212,7 @@ while true; do
         "Fail2Ban" \
         "Cockpit" \
         "Install EVERYTHING" \
+        "Configure Static IP" \
         "Exit"; do
 
         case $REPLY in
@@ -184,7 +223,8 @@ while true; do
             5) install_fail2ban; break ;;
             6) install_cockpit; break ;;
             7) install_all; break ;;
-            8) echo "Exiting..."; exit 0 ;;
+            8) configure_static_ip; break ;;
+            9) echo "Exiting..."; exit 0 ;;
             *) echo -e "${RED}Invalid option. Try again.${NC}" ;;
         esac
     done
