@@ -12,17 +12,30 @@ print_title() {
     echo -e "\n${CYAN}==> $1${NC}"
 }
 
-### File Browser
 install_filebrowser() {
     print_title "Installing File Browser"
-
     read -p "Subdomain name (for /filebrowser/X): " subdomain
     read -p "System user to run File Browser: " sys_user
     read -p "File Browser admin user: " fb_user
     read -s -p "File Browser admin password: " fb_pass
     echo
 
-    curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
+    # Descarga directa desde GitHub releases (evita raw.githubusercontent.com)
+    FB_VERSION=$(curl -fsSLk "https://api.github.com/repos/filebrowser/filebrowser/releases/latest" \
+        | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)  FB_ARCH="linux-amd64" ;;
+        aarch64) FB_ARCH="linux-arm64" ;;
+        armv7l)  FB_ARCH="linux-armv7" ;;
+        *)       echo "Arquitectura no soportada: $ARCH"; return 1 ;;
+    esac
+
+    curl -fsSLk "https://github.com/filebrowser/filebrowser/releases/download/v${FB_VERSION}/${FB_ARCH}-filebrowser.tar.gz" \
+        -o /tmp/filebrowser.tar.gz
+    sudo tar -xzf /tmp/filebrowser.tar.gz -C /usr/local/bin filebrowser
+    sudo chmod +x /usr/local/bin/filebrowser
+    rm /tmp/filebrowser.tar.gz
 
     sudo mkdir -p /etc/filebrowser
     sudo tee /etc/filebrowser/default.json > /dev/null <<EOL
@@ -37,28 +50,28 @@ install_filebrowser() {
 }
 EOL
 
-    sudo /usr/local/bin/filebrowser -d /etc/filebrowser/filebrowser.db config init
-    cd /etc/filebrowser
-    sudo /usr/local/bin/filebrowser users add "$fb_user" "$fb_pass" --perm.admin
+    sudo /usr/local/bin/filebrowser config init -d /etc/filebrowser/filebrowser.db
+    sudo /usr/local/bin/filebrowser users add "$fb_user" "$fb_pass" --perm.admin -d /etc/filebrowser/filebrowser.db
 
     sudo tee /etc/systemd/system/filebrowser.service > /dev/null <<EOL
 [Unit]
-Description=File browser
+Description=File Browser
 After=network.target
 
 [Service]
 User=$sys_user
 Group=$sys_user
 ExecStart=/usr/local/bin/filebrowser -c /etc/filebrowser/default.json
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
-    sudo chown -R $sys_user:$sys_user /etc/filebrowser
+    sudo chown -R "$sys_user":"$sys_user" /etc/filebrowser
+    sudo systemctl daemon-reload
     sudo systemctl enable filebrowser
     sudo systemctl start filebrowser
-
     echo -e "${GREEN}File Browser installed on http://<IP>:4201/filebrowser/$subdomain${NC}"
 }
 
