@@ -28,7 +28,6 @@
 #   SETUP_COCKPIT_URL      Cockpit baseURL key (/admin/<X>) (default: hostname)
 #   SETUP_PORTAINER_USER   Portainer admin user       (default: admin)
 #   SETUP_PORTAINER_PASS   Portainer admin password   (default: $SETUP_PASS)
-#   SETUP_TTYD_BASE        URL prefix ttyd serves on  (default: /shell/$SETUP_USER/)
 
 set -e
 
@@ -264,50 +263,6 @@ EOL
 }
 
 # ============================================================
-# ttyd (browser shell — replacement for the deprecated ShellInABox)
-# ============================================================
-install_ttyd() {
-    print_title "Installing ttyd"
-    : "${SETUP_USER:?need SETUP_USER (used to compose the URL base path)}"
-    : "${SETUP_TTYD_BASE:=/shell/${SETUP_USER}/}"
-
-    if [ ! -x /usr/local/bin/ttyd ]; then
-        local arch
-        case "$(uname -m)" in
-            x86_64)  arch="x86_64" ;;
-            aarch64) arch="aarch64" ;;
-            armv7l)  arch="armhf" ;;
-            *)       echo -e "${RED}Unsupported architecture: $(uname -m)${NC}"; return 1 ;;
-        esac
-        local version
-        version=$(curl -fsSL "https://api.github.com/repos/tsl0922/ttyd/releases/latest" \
-            | grep '"tag_name"' | sed 's/.*"\([^"]*\)".*/\1/')
-        curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${version}/ttyd.${arch}" \
-            -o /usr/local/bin/ttyd
-        chmod +x /usr/local/bin/ttyd
-    fi
-
-    # ttyd runs `login` (PAM) on each connection, so authentication uses the
-    # system's Linux users — no SSH involved, no extra credentials.
-    install -m 0644 /dev/stdin /etc/systemd/system/ttyd.service <<EOF
-[Unit]
-Description=ttyd — browser-based terminal
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/ttyd --port 4200 --interface 0.0.0.0 --base-path ${SETUP_TTYD_BASE} login
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable --now ttyd
-    echo -e "${GREEN}ttyd at http://<IP>:4200${SETUP_TTYD_BASE} (login: any system user)${NC}"
-}
-
-# ============================================================
 # Static IP (skipped under cloud-init — kept for legacy interactive use)
 # ============================================================
 configure_static_ip() {
@@ -345,7 +300,6 @@ install_all() {
     install_fail2ban
     install_cockpit
     install_filebrowser
-    install_ttyd
 }
 
 # ============================================================
@@ -358,7 +312,6 @@ run_service() {
         fail2ban)    install_fail2ban ;;
         cockpit)     install_cockpit ;;
         filebrowser) install_filebrowser ;;
-        ttyd)        install_ttyd ;;
         static-ip)   configure_static_ip ;;
         all)         install_all ;;
         *)           echo -e "${RED}Unknown service: $1${NC}"; return 1 ;;
@@ -385,7 +338,6 @@ while true; do
         "Fail2Ban" \
         "Cockpit" \
         "File Browser" \
-        "ttyd (browser shell)" \
         "Install EVERYTHING" \
         "Configure Static IP" \
         "Exit"; do
@@ -395,10 +347,9 @@ while true; do
             3) install_fail2ban;     break ;;
             4) install_cockpit;      break ;;
             5) install_filebrowser;  break ;;
-            6) install_ttyd;         break ;;
-            7) install_all;          break ;;
-            8) configure_static_ip;  break ;;
-            9) echo "Bye."; exit 0 ;;
+            6) install_all;          break ;;
+            7) configure_static_ip;  break ;;
+            8) echo "Bye."; exit 0 ;;
             *) echo -e "${RED}Invalid option.${NC}" ;;
         esac
     done
